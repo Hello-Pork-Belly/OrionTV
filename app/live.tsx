@@ -15,6 +15,7 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('Live');
 const LAST_CHANNEL_KEY = "mytv_live_last_channel";
+const LINE_PREF_KEY = "mytv_live_line_pref";
 
 export default function LiveScreen() {
   const { m3uUrl } = useSettingsStore();
@@ -74,12 +75,22 @@ export default function LiveScreen() {
         setChannelGroups(names);
         setSelectedGroup(names[0] ?? "");
 
-        // 恢复上次看的频道
+        // 恢复上次看的频道 + 该频道上次选中的线路
         let startIndex = 0;
         try {
           const last = await AsyncStorage.getItem(LAST_CHANNEL_KEY);
           const idx = last ? parsed.findIndex((c) => c.id === last) : -1;
           if (idx >= 0) startIndex = idx;
+          const prefRaw = await AsyncStorage.getItem(LINE_PREF_KEY);
+          if (prefRaw) {
+            const pref = JSON.parse(prefRaw) as Record<string, number>;
+            for (const ch of parsed) {
+              const want = pref[ch.id];
+              if (typeof want === "number" && want >= 0 && want < ch.candidates.length && !ch.candidates[want].unsupported) {
+                ch.index = want;
+              }
+            }
+          }
         } catch {
           /* ignore */
         }
@@ -113,6 +124,36 @@ export default function LiveScreen() {
     }
   };
 
+  /** 线路（候选源）切换：dir=1 下一个，-1 上一个；自动跳过不支持的协议 */
+  const switchLine = useCallback(
+    (dir: 1 | -1) => {
+      const ch = currentChannel;
+      if (!ch || ch.candidates.length < 2) {
+        showChannelTitle(`${ch?.name ?? ""} 只有 1 条线路`);
+        return;
+      }
+      const n = ch.candidates.length;
+      let idx = ch.index;
+      for (let i = 0; i < n; i++) {
+        idx = (idx + dir + n) % n;
+        if (!ch.candidates[idx].unsupported) break;
+      }
+      if (idx === ch.index) return;
+      ch.index = idx;
+      setVersion((v) => v + 1);
+      showChannelTitle(`${ch.name} · 线路 ${idx + 1}/${n}`);
+      AsyncStorage.getItem(LINE_PREF_KEY)
+        .then((raw) => {
+          const pref = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+          pref[ch.id] = idx;
+          return AsyncStorage.setItem(LINE_PREF_KEY, JSON.stringify(pref));
+        })
+        .catch(() => {});
+      logger.info(`手动切换线路: ${ch.name} → ${idx + 1}/${n} (${ch.candidates[idx].url.slice(0, 60)})`);
+    },
+    [currentChannel, showChannelTitle]
+  );
+
   const changeChannel = useCallback(
     (direction: "next" | "prev") => {
       if (channels.length === 0) return;
@@ -145,11 +186,12 @@ export default function LiveScreen() {
     (event: HWEvent) => {
       if (deviceType !== 'tv') return;
       if (isChannelListVisible) return;
-      if (event.eventType === "down") setIsChannelListVisible(true);
-      else if (event.eventType === "left") changeChannel("prev");
-      else if (event.eventType === "right") changeChannel("next");
+      // 左右 = 切换线路（同一频道的不同源）；上下 = 打开频道列表
+      if (event.eventType === "down" || event.eventType === "up") setIsChannelListVisible(true);
+      else if (event.eventType === "left") switchLine(-1);
+      else if (event.eventType === "right") switchLine(1);
     },
-    [changeChannel, isChannelListVisible, deviceType]
+    [isChannelListVisible, deviceType, switchLine]
   );
 
   useTVEventHandler(deviceType === 'tv' ? handleTVEvent : () => {});
@@ -175,6 +217,11 @@ export default function LiveScreen() {
           key={`${currentChannel?.id ?? "none"}-${currentChannel?.index ?? 0}-${version}`}
           candidate={currentCand}
           channelTitle={channelTitle}
+          lineLabel={
+            currentChannel && currentChannel.candidates.length > 1
+              ? `线路 ${currentChannel.index + 1}/${currentChannel.candidates.length}`
+              : null
+          }
           onFailed={handlePlaybackFailed}
         />
       )}

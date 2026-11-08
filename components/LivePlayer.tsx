@@ -7,6 +7,8 @@ import type { LiveCandidate } from "@/services/livePlaylist";
 interface LivePlayerProps {
   candidate: LiveCandidate | null;
   channelTitle?: string | null;
+  /** 例如 "线路 2/3"：多条源时常驻显示，方便确认当前线路 */
+  lineLabel?: string | null;
   /** 加载/播放失败时通知父组件（换下一个候选源，或提示用户） */
   onFailed?: (reason: string) => void;
   onPlaybackStatusUpdate?: (status: AVPlaybackStatus) => void;
@@ -17,6 +19,7 @@ const PLAYBACK_TIMEOUT = 15000;
 export default function LivePlayer({
   candidate,
   channelTitle,
+  lineLabel,
   onFailed,
   onPlaybackStatusUpdate,
 }: LivePlayerProps) {
@@ -97,7 +100,7 @@ export default function LivePlayer({
         >
           <Text style={styles.retryText}>重试</Text>
         </Pressable>
-        <Text style={styles.hintText}>按 ← / → 换台，按 ↓ 打开频道列表</Text>
+        <Text style={styles.hintText}>按 ← / → 切换线路，按 ↑ / ↓ 打开频道列表</Text>
       </View>
     );
   }
@@ -121,9 +124,10 @@ export default function LivePlayer({
           <Text style={styles.messageText}>加载中…</Text>
         </View>
       )}
-      {channelTitle && !isLoading && (
+      {(channelTitle || lineLabel) && (
         <View style={styles.overlay}>
-          <Text style={styles.title}>{channelTitle}</Text>
+          {channelTitle ? <Text style={styles.title}>{channelTitle}</Text> : null}
+          {lineLabel ? <Text style={styles.subtitle}>{lineLabel}</Text> : null}
         </View>
       )}
     </View>
@@ -135,6 +139,7 @@ const styles = StyleSheet.create({
   video: { flex: 1, alignSelf: "stretch" },
   overlay: { position: "absolute", top: 20, left: 20, backgroundColor: "rgba(0,0,0,0.5)", padding: 10, borderRadius: 5 },
   title: { color: "#fff", fontSize: 18 },
+  subtitle: { color: "#9fd0ff", fontSize: 14, marginTop: 2 },
   messageText: { color: "#fff", fontSize: 16, marginTop: 10 },
   hintText: { color: "#999", fontSize: 12, marginTop: 12 },
   retryButton: { marginTop: 14, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 6, backgroundColor: "#2f6fed" },
