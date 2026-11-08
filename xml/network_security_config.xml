@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  app.json 里声明了 networkSecurityConfig: "@xml/network_security_config"，
+  但仓库里一直没有这个文件 → Android 默认（targetSdk 28+）禁止明文 HTTP。
+
+  IPTV 源里 http:// 非常常见（尤其内网/运营商组播），旧版因此会直接报：
+    java.net.UnknownServiceException: CLEARTEXT communication to <host> not permitted by network security policy
+
+  这里显式允许明文（直播流本身不承载账号密码；应用自身的 API 仍走 HTTPS）。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
